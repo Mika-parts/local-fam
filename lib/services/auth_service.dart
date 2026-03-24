@@ -53,6 +53,7 @@ class AuthService {
         memberIds: [credential.user!.uid],
         createdAt: DateTime.now(),
         isActive: true,
+        settings: FamilySettings(), // Paramètres par défaut
       );
 
       await _firestore.createFamily(family);

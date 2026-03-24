@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../providers/event_provider_firebase.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/event.dart';
+import '../../models/user.dart';
 import '../events/add_event_screen.dart';
 
 class FirebaseFinalHomeScreen extends StatefulWidget {
@@ -883,7 +884,7 @@ class _FirebaseFinalHomeScreenState extends State<FirebaseFinalHomeScreen> {
             ),
             const SizedBox(height: 8),
             Chip(
-              label: Text(user.role.displayName),
+              label: Text(_getRoleDisplayName(user.role)),
               backgroundColor: Theme.of(context).colorScheme.primaryContainer,
             ),
           ],
@@ -920,5 +921,20 @@ class _FirebaseFinalHomeScreenState extends State<FirebaseFinalHomeScreen> {
         ],
       ),
     );
+  }
+
+  String _getRoleDisplayName(UserRole role) {
+    switch (role) {
+      case UserRole.admin:
+        return 'Administrateur';
+      case UserRole.parent:
+        return 'Parent';
+      case UserRole.teenager:
+        return 'Adolescent';
+      case UserRole.child:
+        return 'Enfant';
+      case UserRole.guest:
+        return 'Invité';
+    }
   }
 }
