@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/family.dart';
 import '../models/user.dart';
 import '../models/event.dart';
+import 'dart:math';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -248,5 +249,179 @@ class FirestoreService {
     }
 
     return stats;
+  }
+
+  // ============ PARTAGE D'AGENDA (NOUVEAU) ============
+
+  Future<String> generateUniqueInviteCode() async {
+    int attempts = 0;
+    const maxAttempts = 10;
+    
+    while (attempts < maxAttempts) {
+      final code = _generateFamilyCode();
+      
+      // Vérifier que le code n'existe pas
+      final existingFamily = await _db
+          .collection('families')
+          .where('inviteCode', isEqualTo: code)
+          .limit(1)
+          .get();
+          
+      if (existingFamily.docs.isEmpty) {
+        return code;
+      }
+      
+      attempts++;
+    }
+    
+    throw Exception('Impossible de générer un code unique');
+  }
+
+  String _generateFamilyCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Pas de O, 0, 1, I
+    final random = Random();
+    final year = DateTime.now().year;
+    const codeLength = 6;
+    
+    String code = '';
+    for (int i = 0; i < codeLength; i++) {
+      code += chars[random.nextInt(chars.length)];
+    }
+    
+    return 'FAM-$year-$code';
+  }
+
+  Future<String> createFamilyRequest({
+    required String familyId,
+    required String email,
+    required String displayName,
+    required UserRole requestedRole,
+    required String userId,
+  }) async {
+    try {
+      final requestId = _db.collection('familyRequests').doc().id;
+      
+      await _db.collection('familyRequests').doc(requestId).set({
+        'id': requestId,
+        'familyId': familyId,
+        'userId': userId,
+        'email': email,
+        'displayName': displayName,
+        'requestedRole': requestedRole.name,
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      
+      return requestId;
+    } catch (e) {
+      print('Erreur createFamilyRequest: $e');
+      rethrow;
+    }
+  }
+
+  Stream<QuerySnapshot> getFamilyRequestsStream(String familyId) {
+    return _db
+        .collection('familyRequests')
+        .where('familyId', isEqualTo: familyId)
+        .where('status', isEqualTo: 'pending')
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  Future<List<Map<String, dynamic>>> getFamilyRequests(String familyId) async {
+    final query = await _db
+        .collection('familyRequests')
+        .where('familyId', isEqualTo: familyId)
+        .where('status', isEqualTo: 'pending')
+        .orderBy('createdAt', descending: true)
+        .get();
+
+    return query.docs.map((doc) => {
+      'id': doc.id,
+      ...doc.data(),
+    }).toList();
+  }
+
+  Future<void> respondToFamilyRequest(String requestId, bool accepted, String familyId) async {
+    try {
+      final batch = _db.batch();
+      
+      final requestRef = _db.collection('familyRequests').doc(requestId);
+      final requestDoc = await requestRef.get();
+      
+      if (!requestDoc.exists) {
+        throw Exception('Demande introuvable');
+      }
+      
+      final requestData = requestDoc.data()!;
+      
+      if (accepted) {
+        // Ajouter l'utilisateur à la famille
+        final userRef = _db.collection('users').doc(requestData['userId']);
+        batch.update(userRef, {
+          'familyId': familyId,
+          'role': requestData['requestedRole'],
+        });
+        
+        // Ajouter à la liste des membres de la famille
+        final familyRef = _db.collection('families').doc(familyId);
+        batch.update(familyRef, {
+          'memberIds': FieldValue.arrayUnion([requestData['userId']]),
+        });
+        
+        // Marquer la demande comme acceptée
+        batch.update(requestRef, {'status': 'accepted'});
+      } else {
+        // Marquer la demande comme refusée
+        batch.update(requestRef, {'status': 'rejected'});
+      }
+      
+      await batch.commit();
+    } catch (e) {
+      print('Erreur respondToFamilyRequest: $e');
+      rethrow;
+    }
+  }
+
+  Future<Family?> findFamilyByCode(String inviteCode) async {
+    final query = await _db
+        .collection('families')
+        .where('inviteCode', isEqualTo: inviteCode.toUpperCase())
+        .where('isActive', isEqualTo: true)
+        .limit(1)
+        .get();
+
+    if (query.docs.isNotEmpty) {
+      return Family.fromMap(query.docs.first.data());
+    }
+    
+    return null;
+  }
+
+  Future<bool> isCodeAlreadyUsed(String inviteCode) async {
+    final family = await findFamilyByCode(inviteCode);
+    return family != null;
+  }
+
+  Future<void> notifyFamilyNewRequest(String familyId, String requestorName) async {
+    // Ici on pourrait ajouter des notifications push
+    // Pour l'instant on peut juste enregistrer une notification simple
+    await _db.collection('notifications').add({
+      'type': 'family_request',
+      'familyId': familyId,
+      'message': '$requestorName souhaite rejoindre votre famille',
+      'createdAt': FieldValue.serverTimestamp(),
+      'isRead': false,
+    });
+  }
+
+  Future<int> countPendingRequests(String familyId) async {
+    final query = await _db
+        .collection('familyRequests')
+        .where('familyId', isEqualTo: familyId)
+        .where('status', isEqualTo: 'pending')
+        .get();
+        
+    return query.docs.length;
   }
 }

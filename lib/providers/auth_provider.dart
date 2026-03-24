@@ -272,4 +272,128 @@ class FamAuthProvider extends ChangeNotifier {
   bool canModifyFamily() {
     return _currentUser?.canModifyFamily() ?? false;
   }
+
+  // ============ GESTION DEMANDES FAMILLE (NOUVEAU) ============
+
+  Future<List<Map<String, dynamic>>> getFamilyRequests() async {
+    if (_currentFamily == null) return [];
+
+    try {
+      return await _firestoreService.getFamilyRequests(_currentFamily!.id);
+    } catch (e) {
+      _setError('Erreur lors du chargement des demandes: $e');
+      return [];
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> getFamilyRequestsStream() {
+    if (_currentFamily == null) {
+      return Stream.value([]);
+    }
+
+    return _firestoreService.getFamilyRequestsStream(_currentFamily!.id)
+        .map((snapshot) => snapshot.docs.map((doc) => {
+              'id': doc.id,
+              ...doc.data() as Map<String, dynamic>,
+            }).toList());
+  }
+
+  Future<bool> approveFamilyRequest(String requestId) async {
+    if (_currentFamily == null) return false;
+
+    try {
+      _setLoading(true);
+      await _authService.approveFamilyRequest(requestId, _currentFamily!.id);
+      
+      // Recharger la famille pour mettre à jour la liste des membres
+      await _loadFamilyData(_currentFamily!.id);
+      
+      return true;
+    } catch (e) {
+      _setError('Erreur lors de l\'acceptation: $e');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<bool> rejectFamilyRequest(String requestId) async {
+    if (_currentFamily == null) return false;
+
+    try {
+      _setLoading(true);
+      await _authService.rejectFamilyRequest(requestId, _currentFamily!.id);
+      return true;
+    } catch (e) {
+      _setError('Erreur lors du refus: $e');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<int> countPendingRequests() async {
+    if (_currentFamily == null) return 0;
+
+    try {
+      return await _firestoreService.countPendingRequests(_currentFamily!.id);
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<bool> isFamilyCodeValid(String code) async {
+    try {
+      return await _authService.isFamilyCodeValid(code);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<String?> getFamilyNameByCode(String code) async {
+    try {
+      return await _authService.getFamilyNameByCode(code);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ============ MÉTHODES UTILITAIRES FAMILLE ============
+
+  Future<void> _loadFamilyData(String familyId) async {
+    try {
+      _currentFamily = await _firestoreService.getFamily(familyId);
+      notifyListeners();
+    } catch (e) {
+      print('Erreur _loadFamilyData: $e');
+    }
+  }
+
+  Future<void> regenerateInviteCode() async {
+    if (_currentFamily == null || !canModifyFamily()) return;
+
+    try {
+      _setLoading(true);
+      final newCode = await _firestoreService.generateUniqueInviteCode();
+      
+      // Mettre à jour la famille avec le nouveau code
+      final updatedFamily = _currentFamily!.copyWith(inviteCode: newCode);
+      await _firestoreService.createFamily(updatedFamily); // Utilise set pour mettre à jour
+      
+      _currentFamily = updatedFamily;
+      notifyListeners();
+    } catch (e) {
+      _setError('Erreur lors de la génération du nouveau code: $e');
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  String? get familyInviteCode => _currentFamily?.inviteCode;
+  
+  List<String> get familyMembers => _currentFamily?.memberIds ?? [];
+  
+  bool get isAdmin => _currentUser?.role == UserRole.admin;
+  
+  bool get isParent => _currentUser?.role == UserRole.parent || isAdmin;
 }

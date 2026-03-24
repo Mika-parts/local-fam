@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Règles pour les utilisateurs
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && isFamily(request.auth.uid, userId);
+    }
+    
+    // Règles pour les familles
+    match /families/{familyId} {
+      allow read, write: if request.auth != null && isFamilyMember(familyId, request.auth.uid);
+      allow create: if request.auth != null;
+    }
+    
+    // Règles pour les événements
+    match /events/{eventId} {
+      allow read, write: if request.auth != null && isFamilyMember(resource.data.familyId, request.auth.uid);
+      allow create: if request.auth != null && canCreateEvents(request.auth.uid);
+    }
+    
+    // Règles pour les demandes d'accès
+    match /familyRequests/{requestId} {
+      allow read, write: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && isFamilyAdmin(resource.data.familyId, request.auth.uid);
+    }
+    
+    // Fonctions utilitaires
+    function isFamily(userIdA, userIdB) {
+      let userA = get(/databases/$(database)/documents/users/$(userIdA));
+      let userB = get(/databases/$(database)/documents/users/$(userIdB));
+      return userA.data.familyId == userB.data.familyId;
+    }
+    
+    function isFamilyMember(familyId, userId) {
+      let user = get(/databases/$(database)/documents/users/$(userId));
+      return user.data.familyId == familyId;
+    }
+    
+    function isFamilyAdmin(familyId, userId) {
+      let user = get(/databases/$(database)/documents/users/$(userId));
+      return user.data.familyId == familyId && user.data.role in ['admin', 'parent'];
+    }
+    
+    function canCreateEvents(userId) {
+      let user = get(/databases/$(database)/documents/users/$(userId));
+      return user.data.role in ['admin', 'parent', 'child'];
+    }
+  }
+}
