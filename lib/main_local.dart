@@ -3,8 +3,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'services/local_storage_service.dart';
+import 'screens/planning_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialiser le service de stockage local
+  await LocalStorageService().init();
+  
   runApp(const LocalFamilyApp());
 }
 
@@ -274,7 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
           });
         },
         children: const [
-          PlanningPage(),
+          PlanningScreen(),
           AlbumPage(),
           JournalPage(),
         ],
@@ -310,42 +317,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class PlanningPage extends StatelessWidget {
-  const PlanningPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.calendar_month,
-            size: 80,
-            color: Colors.teal,
-          ),
-          SizedBox(height: 16),
-          Text(
-            'Planning Familial Local',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Calendrier 100% hors-ligne\\nSync WiFi Direct entre appareils',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// PlanningPage remplacée par PlanningScreen (dans screens/planning_screen.dart)
 
 class AlbumPage extends StatelessWidget {
   const AlbumPage({super.key});
