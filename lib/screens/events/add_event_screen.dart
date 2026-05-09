@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/event.dart';
-import '../../providers/event_provider.dart';
+import '../../providers/event_provider_firebase.dart';
+import '../../providers/auth_provider.dart';
 
 class AddEventScreen extends StatefulWidget {
   final DateTime selectedDate;
@@ -284,7 +285,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
     }
   }
 
-  void _saveEvent() {
+  Future<void> _saveEvent() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -306,26 +307,29 @@ class _AddEventScreenState extends State<AddEventScreen> {
       _endTime.minute,
     );
 
+    final authProvider = context.read<FamAuthProvider>();
+    final currentUser = authProvider.currentUser;
+    final familyId = authProvider.currentFamily?.id ?? '';
+
     final event = Event(
       id: const Uuid().v4(),
-      familyId: 'local-family',
+      familyId: familyId,
       title: _titleController.text.trim(),
       description: _descriptionController.text.trim(),
       startDate: startDateTime,
       endDate: endDateTime,
       type: _eventType,
-      createdBy: 'local-user',
-      createdByName: 'Utilisateur Local',
+      createdBy: currentUser?.id ?? '',
+      createdByName: currentUser?.displayName ?? '',
       createdAt: DateTime.now(),
     );
 
-    // Ajouter à la liste
-    context.read<EventProvider>().addEvent(event);
+    final eventProvider = context.read<EventProviderFirebase>();
+    await eventProvider.addEvent(event);
 
-    // Retourner à l'écran précédent
+    if (!mounted) return;
     Navigator.pop(context);
 
-    // Afficher un message de confirmation
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Événement "${event.title}" ajouté !'),
@@ -334,7 +338,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
           label: 'Annuler',
           textColor: Colors.white,
           onPressed: () {
-            context.read<EventProvider>().deleteEvent(event.id);
+            context.read<EventProviderFirebase>().deleteEvent(event.id);
           },
         ),
       ),
